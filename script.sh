@@ -2,7 +2,7 @@
 
 # Define the folder path under /home
 FOLDER="/home/Troubleshooting"
-SCRIPT_URL="https://raw.githubusercontent.com/mainulhossain123/master_monitoring/main/master_monitoring.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/master_monitoring.sh"
 SCRIPT_NAME="master_monitoring.sh"
 
 # Check if the folder exists; if not, create it
