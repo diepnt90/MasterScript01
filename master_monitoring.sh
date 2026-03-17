@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Combined Diagnostics Script for Thread Count, Response Time, Outbound Connections and Memory Usage monitoring.
+# Combined Diagnostics Script for Thread Count, Response Time, Outbound Connections,
+# Memory Usage and GCDump monitoring.
 # Allows user to select which diagnostics to run and provides additional input as needed.
 # Author: Mainul Hossain and Anh Tuan Hoang
 # Created: 10 July 2024
@@ -19,11 +20,13 @@ function usage() {
     echo "  - responsetime      :  Monitor response time of a .NET core application"
     echo "  - outboundconnection:  Monitor outbound connections"
     echo "  - memoryusage       :  Monitor memory usage and collect dumps at two thresholds"
+    echo "  - gcdump            :  Monitor memory usage and collect gcdumps at three thresholds, zip reports and upload"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>  :  Specify threshold (required for threadcount, responsetime, outboundconnection)"
-    echo "  -t1 <percent>   :  First memory threshold in % (required for memoryusage)"
-    echo "  -t2 <percent>   :  Second memory threshold in % (required for memoryusage)"
+    echo "  -t1 <percent>   :  First threshold in %  (required for memoryusage and gcdump)"
+    echo "  -t2 <percent>   :  Second threshold in % (required for memoryusage and gcdump)"
+    echo "  -t3 <percent>   :  Third threshold in %  (required for gcdump only)"
     echo "  -l <URL>        :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
     echo "  -c              :  Shutting down the script and all relevant processes"
     echo "  -h              :  Display this help message"
@@ -48,11 +51,12 @@ while getopts ":d:t:l:ch" opt; do
 done
 shift $((OPTIND - 1))
 
-# Handle -t1 / -t2 from remaining args (getopts doesn't support multi-char flags)
+# Handle -t1 / -t2 / -t3 from remaining args (getopts doesn't support multi-char flags)
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         -t1) MEM_THRESHOLD1="$2"; shift 2 ;;
         -t2) MEM_THRESHOLD2="$2"; shift 2 ;;
+        -t3) MEM_THRESHOLD3="$2"; shift 2 ;;
         enable-dump|enable-trace|enable-dump-trace)
             DIAG_OPTION="$1"; shift ;;
         *) shift ;;
@@ -66,6 +70,7 @@ if [ "$CLEANUP" = true ]; then
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
     ./memoryusage/mem_monitor.sh -c 2>/dev/null
+    ./gcdump/gcdump_monitor.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
 fi
@@ -77,13 +82,15 @@ if [ -z "$DIAGNOSTIC" ]; then
     echo "2. responsetime"
     echo "3. outboundconnection"
     echo "4. memoryusage"
-    read -p "Enter choice [1-4]: " diag_choice
+    echo "5. gcdump"
+    read -p "Enter choice [1-5]: " diag_choice
 
     case $diag_choice in
         1) DIAGNOSTIC="threadcount" ;;
         2) DIAGNOSTIC="responsetime" ;;
         3) DIAGNOSTIC="outboundconnection" ;;
         4) DIAGNOSTIC="memoryusage" ;;
+        5) DIAGNOSTIC="gcdump" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
@@ -98,8 +105,21 @@ if [ "$DIAGNOSTIC" == "memoryusage" ]; then
     fi
 fi
 
+# ─── gcdump: get thresholds interactively if not provided ────────────────────
+if [ "$DIAGNOSTIC" == "gcdump" ]; then
+    if [ -z "$MEM_THRESHOLD1" ]; then
+        read -p "Enter memory threshold 1 (%) - collect gcdump #1, monitoring continues: " MEM_THRESHOLD1
+    fi
+    if [ -z "$MEM_THRESHOLD2" ]; then
+        read -p "Enter memory threshold 2 (%) - collect gcdump #2, monitoring continues: " MEM_THRESHOLD2
+    fi
+    if [ -z "$MEM_THRESHOLD3" ]; then
+        read -p "Enter memory threshold 3 (%) - collect gcdump #3, zip reports + upload, then exit: " MEM_THRESHOLD3
+    fi
+fi
+
 # ─── Other diagnostics: get threshold if not provided ────────────────────────
-if [ "$DIAGNOSTIC" != "memoryusage" ] && [ -z "$THRESHOLD" ]; then
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "$THRESHOLD" ]; then
     read -p "Enter threshold: " THRESHOLD
 fi
 
@@ -109,8 +129,8 @@ if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
     URL=${URL:-http://localhost:80}
 fi
 
-# Handle diagnostic options (dump/trace) for non-memory diagnostics
-if [ "$DIAGNOSTIC" != "memoryusage" ] && [ -z "$DIAG_OPTION" ]; then
+# Handle diagnostic options (dump/trace) for non-memory/gcdump diagnostics
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "$DIAG_OPTION" ]; then
     echo "Enable additional options (default: none):"
     echo "1. enable-dump"
     echo "2. enable-trace"
@@ -132,6 +152,7 @@ THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript0
 RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/resp_monitoring.sh"
 SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/snat_connection_monitoring.sh"
 MEM_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/mem_monitor.sh"
+GCDUMP_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/gcdump_monitor.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
@@ -204,6 +225,10 @@ case $DIAGNOSTIC in
     memoryusage)
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2")
         run_diagnostic_script "memoryusage" $MEM_MONITOR_SCRIPT_URL
+        ;;
+    gcdump)
+        cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2" "-t3" "$MEM_THRESHOLD3")
+        run_diagnostic_script "gcdump" $GCDUMP_MONITOR_SCRIPT_URL
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
