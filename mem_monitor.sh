@@ -48,6 +48,51 @@ function getcomputername() {
     echo "$instance"
 }
 
+function collect_counters()
+{
+    # $1-label, $2-output_file, $3-instance, $4-pid
+    local label=$1
+    local output_file=$2
+    local instance=$3
+    local pid=$4
+
+    local timestamp=$(date '+%Y%m%d_%H%M%S')
+    local counters_file="${instance}_${label}_${timestamp}_counters.txt"
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting dotnet-counters for 10s -> ${counters_file} ..." >> "$output_file"
+    timeout 10 /tools/dotnet-counters monitor -p "$pid" \
+        --counters System.Runtime[gc-heap-size,working-set,committed-bytes,gen-0-gc-count,gen-1-gc-count,gen-2-gc-count] \
+        > "$counters_file" 2>&1
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] dotnet-counters collection done." >> "$output_file"
+
+    # Upload counters file to Azure Blob
+    local sas_url
+    sas_url=$(getsasurl "$pid")
+    if [[ -n "$sas_url" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Uploading counters file to Azure Blob Container..." >> "$output_file"
+        local azcopy_output
+        azcopy_output=$(/tools/azcopy copy "$counters_file" "$sas_url" 2>&1)
+        if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Counters file successfully uploaded." >> "$output_file"
+            return 0
+        fi
+
+        local retry_count=1
+        local max_retries=5
+        while [[ $retry_count -le $max_retries ]]; do
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] AzCopy failed. Retrying... (Attempt $retry_count/$max_retries)" >> "$output_file"
+            sleep 5
+            azcopy_output=$(/tools/azcopy copy "$counters_file" "$sas_url" 2>&1)
+            if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Counters file successfully uploaded." >> "$output_file"
+                return 0
+            fi
+            ((retry_count++))
+        done
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] ERROR: AzCopy failed to upload counters file after $max_retries attempts." >> "$output_file"
+    fi
+}
+
 function collectdump() {
     # $1-label, $2-output_file, $3-instance, $4-pid
     local label=$1
@@ -66,6 +111,7 @@ function collectdump() {
         sas_url=$(getsasurl "$pid")
 
         echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Acquiring dump lock for instance ${instance}..." >> "$output_file"
+        collect_counters "$label" "$output_file" "$instance" "$pid"
         echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting memory dump -> ${dump_file} ..." >> "$output_file"
 
         /tools/dotnet-dump collect -p "$pid" -o "$dump_file" > /dev/null
