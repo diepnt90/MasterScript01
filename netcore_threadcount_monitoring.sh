@@ -4,8 +4,8 @@
 # If the thread count exceeds a predefined threshold, then the script will automatically generate a memory dump and/or profiler trace for investigation.
 #
 # author: Tuan Hoang
-# Updated: Mainul Hossain
-# 12 Feb 2025
+# Updated: Diep Nguyen
+# 17 Mar 2026
 
 script_name=${0##*/}
 
