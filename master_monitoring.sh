@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Combined Diagnostics Script for Thread Count, Response Time and Outbound Connections monitoring.
+# Combined Diagnostics Script for Thread Count, Response Time, Outbound Connections and Memory Usage monitoring.
 # Allows user to select which diagnostics to run and provides additional input as needed.
 # Author: Mainul Hossain and Anh Tuan Hoang
 # Created: 10 July 2024
@@ -18,13 +18,16 @@ function usage() {
     echo "  - threadcount       :  Monitor thread count of a .NET core application"
     echo "  - responsetime      :  Monitor response time of a .NET core application"
     echo "  - outboundconnection:  Monitor outbound connections"
+    echo "  - memoryusage       :  Monitor memory usage and collect dumps at two thresholds"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
-    echo "  -t <threshold>:  Specify threshold (required for all diagnostics)"
-    echo "  -l <URL>      :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
-    echo "  -c            :  Shutting down the script and all relevant processes"
-    echo "  -h            :  Display this help message"
-    echo "Optional arguments for all diagnostics:"
+    echo "  -t <threshold>  :  Specify threshold (required for threadcount, responsetime, outboundconnection)"
+    echo "  -t1 <percent>   :  First memory threshold in % (required for memoryusage)"
+    echo "  -t2 <percent>   :  Second memory threshold in % (required for memoryusage)"
+    echo "  -l <URL>        :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
+    echo "  -c              :  Shutting down the script and all relevant processes"
+    echo "  -h              :  Display this help message"
+    echo "Optional arguments for threadcount, responsetime, outboundconnection:"
     echo "  enable-dump        :  Enable memory dump collection when threshold is exceeded"
     echo "  enable-trace       :  Enable profiler trace collection when threshold is exceeded"
     echo "  enable-dump-trace  :  Enable both memdump and trace collection when threshold is exceeded"
@@ -45,12 +48,24 @@ while getopts ":d:t:l:ch" opt; do
 done
 shift $((OPTIND - 1))
 
+# Handle -t1 / -t2 from remaining args (getopts doesn't support multi-char flags)
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -t1) MEM_THRESHOLD1="$2"; shift 2 ;;
+        -t2) MEM_THRESHOLD2="$2"; shift 2 ;;
+        enable-dump|enable-trace|enable-dump-trace)
+            DIAG_OPTION="$1"; shift ;;
+        *) shift ;;
+    esac
+done
+
 # Check if cleanup is requested
 if [ "$CLEANUP" = true ]; then
     echo "Stopping all diagnostic scripts..."
     ./threadcount/netcore_threadcount_monitoring.sh -c 2>/dev/null
     ./responsetime/resp_monitoring.sh -c 2>/dev/null
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
+    ./memoryusage/mem_monitor.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
 fi
@@ -61,18 +76,30 @@ if [ -z "$DIAGNOSTIC" ]; then
     echo "1. threadcount"
     echo "2. responsetime"
     echo "3. outboundconnection"
-    read -p "Enter choice [1-3]: " diag_choice
+    echo "4. memoryusage"
+    read -p "Enter choice [1-4]: " diag_choice
 
     case $diag_choice in
         1) DIAGNOSTIC="threadcount" ;;
         2) DIAGNOSTIC="responsetime" ;;
         3) DIAGNOSTIC="outboundconnection" ;;
+        4) DIAGNOSTIC="memoryusage" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
 
-# Get threshold if not provided
-if [ -z "$THRESHOLD" ]; then
+# ─── memoryusage: get thresholds interactively if not provided ───────────────
+if [ "$DIAGNOSTIC" == "memoryusage" ]; then
+    if [ -z "$MEM_THRESHOLD1" ]; then
+        read -p "Enter memory threshold 1 (%) - first dump, monitoring continues: " MEM_THRESHOLD1
+    fi
+    if [ -z "$MEM_THRESHOLD2" ]; then
+        read -p "Enter memory threshold 2 (%) - second dump, then script exits: " MEM_THRESHOLD2
+    fi
+fi
+
+# ─── Other diagnostics: get threshold if not provided ────────────────────────
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ -z "$THRESHOLD" ]; then
     read -p "Enter threshold: " THRESHOLD
 fi
 
@@ -82,34 +109,29 @@ if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
     URL=${URL:-http://localhost:80}
 fi
 
-# Handle diagnostic options for all monitoring types
-if [ -z "$1" ]; then
+# Handle diagnostic options (dump/trace) for non-memory diagnostics
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ -z "$DIAG_OPTION" ]; then
     echo "Enable additional options (default: none):"
     echo "1. enable-dump"
     echo "2. enable-trace"
     echo "3. enable-dump-trace"
-    read -p "Enter choice [1-3]: " diag_option_choice
+    echo "4. none"
+    read -p "Enter choice [1-4]: " diag_option_choice
 
     case $diag_option_choice in
         1) DIAG_OPTION="enable-dump" ;;
         2) DIAG_OPTION="enable-trace" ;;
         3) DIAG_OPTION="enable-dump-trace" ;;
+        4) DIAG_OPTION="" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
-else
-    while (( "$#" )); do
-        if [ "$1" == "enable-dump" ] || [ "$1" == "enable-trace" ] || [ "$1" == "enable-dump-trace" ]; then
-            DIAG_OPTION="$1"
-            break
-        fi
-        shift
-    done
 fi
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/netcore_threadcount_monitoring.sh"
 RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/resp_monitoring.sh"
 SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/snat_connection_monitoring.sh"
+MEM_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/mem_monitor.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
@@ -178,6 +200,10 @@ case $DIAGNOSTIC in
             cmd_args+=("$DIAG_OPTION")
         fi
         run_diagnostic_script "outboundconnection" $SNAT_CONNECTION_MONITORING_SCRIPT_URL
+        ;;
+    memoryusage)
+        cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2")
+        run_diagnostic_script "memoryusage" $MEM_MONITOR_SCRIPT_URL
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
