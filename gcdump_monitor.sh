@@ -48,6 +48,24 @@ function getcomputername() {
     echo "$instance"
 }
 
+function collect_counters()
+{
+    # $1-label, $2-output_file, $3-instance, $4-pid
+    local label=$1
+    local output_file=$2
+    local instance=$3
+    local pid=$4
+
+    local timestamp=$(date '+%Y%m%d_%H%M%S')
+    local counters_file="${WORK_DIR}/${instance}_${label}_${timestamp}_counters.txt"
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting dotnet-counters for 10s -> $(basename $counters_file) ..." | tee -a "$output_file"
+    timeout 10 /tools/dotnet-counters monitor -p "$pid" \
+        --counters System.Runtime[gc-heap-size,working-set,committed-bytes,gen-0-gc-count,gen-1-gc-count,gen-2-gc-count] \
+        > "$counters_file" 2>&1
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] dotnet-counters collection done." | tee -a "$output_file"
+}
+
 function collect_gcdump() {
     # $1-threshold_label (e.g. "30pct"), $2-output_file, $3-instance, $4-pid
     local label=$1
@@ -59,6 +77,7 @@ function collect_gcdump() {
     local gcdump_file="${WORK_DIR}/gcdump_${instance}_${label}_${timestamp}.gcdump"
     local report_file="${WORK_DIR}/report_${instance}_${label}_${timestamp}.txt"
 
+    collect_counters "$label" "$output_file" "$instance" "$pid"
     echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting gcdump -> $(basename $gcdump_file) ..." | tee -a "$output_file"
 
     if [[ ! -x "/tools/dotnet-gcdump" ]]; then
@@ -101,11 +120,15 @@ function zip_and_upload() {
     sas_url=$(getsasurl "$pid")
 
     local report_count=${#COLLECTED_REPORTS[@]}
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Archiving $report_count report txt file(s) -> $(basename $zip_file) ..." | tee -a "$output_file"
+    local counters_count=${#COLLECTED_COUNTERS[@]}
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Archiving $report_count report(s) + $counters_count counters file(s) -> $(basename $zip_file) ..." | tee -a "$output_file"
 
-    # Bundle txt report files using tar+gzip (available by default)
+    # Bundle all collected files (reports + counters) using tar+gzip
+    local all_files=("${COLLECTED_REPORTS[@]}" "${COLLECTED_COUNTERS[@]}")
+    local basenames=()
+    for f in "${all_files[@]}"; do basenames+=("${f##*/}"); done
     local tar_output
-    tar_output=$(tar -czf "$zip_file" -C "$WORK_DIR" "${COLLECTED_REPORTS[@]##*/}" 2>&1)
+    tar_output=$(tar -czf "$zip_file" -C "$WORK_DIR" "${basenames[@]}" 2>&1)
     if [[ $? -ne 0 ]]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Failed to create tar.gz file. Details: $tar_output" | tee -a "$output_file"
         return 1
@@ -201,6 +224,7 @@ mkdir -p "$WORK_DIR"
 # Arrays to track collected files
 COLLECTED_REPORTS=()
 COLLECTED_GCDUMPS=()
+COLLECTED_COUNTERS=()
 
 PREVIOUS_HOUR=""
 
