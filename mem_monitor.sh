@@ -57,12 +57,14 @@ function collect_counters()
     local pid=$4
 
     local timestamp=$(date '+%Y%m%d_%H%M%S')
-    local counters_file="${instance}_${label}_${timestamp}_counters.txt"
+    local counters_file="${instance}_${label}_${timestamp}_counters.csv"
 
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting dotnet-counters for 10s -> ${counters_file} ..." >> "$output_file"
-    timeout 10 /tools/dotnet-counters monitor -p "$pid" \
-        --counters System.Runtime[gc-heap-size,working-set,committed-bytes,gen-0-gc-count,gen-1-gc-count,gen-2-gc-count] \
-        > "$counters_file" 2>&1
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting dotnet-counters (10s, csv) -> ${counters_file} ..." >> "$output_file"
+    /tools/dotnet-counters collect -p "$pid" \
+        --counters System.Runtime[gc-heap-size,working-set,loh-size,poh-size,gen-2-size,gen-0-size,gen-1-size,gc-fragmentation,gc-committed-bytes,alloc-rate] \
+        --output "$counters_file" \
+        --format csv \
+        --duration 00:00:10 > /dev/null 2>&1
     echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] dotnet-counters collection done." >> "$output_file"
 
     # Upload counters file to Azure Blob
