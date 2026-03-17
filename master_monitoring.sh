@@ -3,9 +3,9 @@
 # Combined Diagnostics Script for Thread Count, Response Time, Outbound Connections,
 # Memory Usage and GCDump monitoring.
 # Allows user to select which diagnostics to run and provides additional input as needed.
-# Author: Mainul Hossain and Anh Tuan Hoang
-# Created: 10 July 2024
-# Updated: January 21, 2025
+# Author: Diep Nguyen
+# Created: 17 Mar 2026
+# Updated: 17 Mar 2026
 
 # Get the script's name
 master_script_name=${0##*/}
