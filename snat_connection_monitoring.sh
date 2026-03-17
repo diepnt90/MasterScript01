@@ -4,9 +4,9 @@
 # If the number of outbound connections exceeds a predefined threshold, 
 # then the script will automatically generate a memory dump and/or profiler trace for investigation.
 # Script combined from work of : Ander Wahlqvist and Tuan Hoang 
-# Author: Mainul Hossain
-# Created: January 21, 2025
-# Updated: 12 Feb 2025
+# Author: Diep Nguyen
+# Created: 17 Mar 2026
+# Updated: 17 Mar 2026
 
 script_name=${0##*/}
 
