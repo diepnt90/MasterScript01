@@ -3,10 +3,9 @@
 # This script is for monitoring the response time of a .NET core application.
 # If the response time exceeds a predefined threshold, then the script will automatically generate a memory dump/profiler trace for investigation.
 #
-# author: Tuan Hoang
-# 21 June 2024
-# Updated: Mainul Hossain
-# 27 May 2025
+# Author: Diep Nguyen
+# Created: 17 Mar 2026
+# Updated: 17 Mar 2026
 script_name=${0##*/}
 function usage()
 {
