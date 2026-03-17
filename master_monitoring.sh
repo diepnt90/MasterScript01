@@ -4,8 +4,8 @@
 # Memory Usage and GCDump monitoring.
 # Allows user to select which diagnostics to run and provides additional input as needed.
 # Author: Diep Nguyen
-# Created: 17 Mar 2026
-# Updated: 17 Mar 2026
+# Created: 15 Mar 2026
+# Updated: 15 Mar 2026
 
 # Get the script's name
 master_script_name=${0##*/}
@@ -95,14 +95,32 @@ if [ -z "$DIAGNOSTIC" ]; then
     esac
 fi
 
-# ─── memoryusage: get thresholds interactively if not provided ───────────────
+# ─── memoryusage: get and validate thresholds ────────────────────────────────
 if [ "$DIAGNOSTIC" == "memoryusage" ]; then
-    if [ -z "$MEM_THRESHOLD1" ]; then
-        read -p "Enter memory threshold 1 (%) - first dump, monitoring continues: " MEM_THRESHOLD1
-    fi
-    if [ -z "$MEM_THRESHOLD2" ]; then
-        read -p "Enter memory threshold 2 (%) - second dump, then script exits: " MEM_THRESHOLD2
-    fi
+    while true; do
+        [ -z "$MEM_THRESHOLD1" ] && read -p "Enter memory threshold 1 (%) - first dump, monitoring continues: " MEM_THRESHOLD1
+        [ -z "$MEM_THRESHOLD2" ] && read -p "Enter memory threshold 2 (%) - second dump, then script exits: " MEM_THRESHOLD2
+
+        # Validate integers
+        if ! [[ "$MEM_THRESHOLD1" =~ ^[0-9]+$ ]] || [[ "$MEM_THRESHOLD1" -lt 1 ]] || [[ "$MEM_THRESHOLD1" -gt 100 ]]; then
+            echo "[ERROR] Threshold 1 must be an integer between 1 and 100 (received: $MEM_THRESHOLD1)"
+            MEM_THRESHOLD1=""
+            MEM_THRESHOLD2=""
+            continue
+        fi
+        if ! [[ "$MEM_THRESHOLD2" =~ ^[0-9]+$ ]] || [[ "$MEM_THRESHOLD2" -lt 1 ]] || [[ "$MEM_THRESHOLD2" -gt 100 ]]; then
+            echo "[ERROR] Threshold 2 must be an integer between 1 and 100 (received: $MEM_THRESHOLD2)"
+            MEM_THRESHOLD2=""
+            continue
+        fi
+        if [[ "$MEM_THRESHOLD1" -ge "$MEM_THRESHOLD2" ]]; then
+            echo "[ERROR] Threshold 1 ($MEM_THRESHOLD1%) must be less than threshold 2 ($MEM_THRESHOLD2%). Please re-enter."
+            MEM_THRESHOLD1=""
+            MEM_THRESHOLD2=""
+            continue
+        fi
+        break
+    done
 fi
 
 # ─── gcdump: get thresholds interactively if not provided ────────────────────
@@ -135,14 +153,12 @@ if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "
     echo "1. enable-dump"
     echo "2. enable-trace"
     echo "3. enable-dump-trace"
-    echo "4. none"
-    read -p "Enter choice [1-4]: " diag_option_choice
+    read -p "Enter choice [1-3]: " diag_option_choice
 
     case $diag_option_choice in
         1) DIAG_OPTION="enable-dump" ;;
         2) DIAG_OPTION="enable-trace" ;;
         3) DIAG_OPTION="enable-dump-trace" ;;
-        4) DIAG_OPTION="" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
