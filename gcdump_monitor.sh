@@ -96,16 +96,18 @@ function zip_and_upload() {
     local pid=$3
 
     local timestamp=$(date '+%Y%m%d_%H%M%S')
-    local zip_file="${WORK_DIR}/gcdump_reports_${instance}_${timestamp}.zip"
+    local zip_file="${WORK_DIR}/gcdump_reports_${instance}_${timestamp}.tar.gz"
     local sas_url
     sas_url=$(getsasurl "$pid")
 
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Zipping all 3 report txt files -> $(basename $zip_file) ..." | tee -a "$output_file"
+    local report_count=${#COLLECTED_REPORTS[@]}
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Archiving $report_count report txt file(s) -> $(basename $zip_file) ..." | tee -a "$output_file"
 
-    # Zip only the txt report files
-    zip -j "$zip_file" "${COLLECTED_REPORTS[@]}" > /dev/null 2>&1
+    # Bundle txt report files using tar+gzip (available by default)
+    local tar_output
+    tar_output=$(tar -czf "$zip_file" -C "$WORK_DIR" "${COLLECTED_REPORTS[@]##*/}" 2>&1)
     if [[ $? -ne 0 ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Failed to create zip file." | tee -a "$output_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Failed to create tar.gz file. Details: $tar_output" | tee -a "$output_file"
         return 1
     fi
 
