@@ -48,6 +48,34 @@ function getcomputername() {
     echo "$instance"
 }
 
+
+function getwebsitename() {
+    local pid=$1
+    local site
+    site=$(cat "/proc/$pid/environ" | tr '\0' '\n' | grep -w WEBSITE_SITE_NAME)
+    site=${site#*=}
+    echo "${site:0:6}"
+}
+
+function sendemail() {
+    # $1-subject, $2-output_file
+    local subject=$1
+    local output_file=$2
+    if [[ -z "$NOTIFY_EMAIL" ]]; then
+        return 0
+    fi
+    local response
+    response=$(curl -s -X POST https://api.smtp2go.com/v3/email/send \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"api_key\": \"api-3A3D49C1F24C4BB086727C18615A0353\",
+            \"to\": [\"$NOTIFY_EMAIL\"],
+            \"sender\": \"IMtool@daulac.my\",
+            \"subject\": \"$subject\",
+            \"text_body\": \"\"
+        }" 2>&1)
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Email notification sent to $NOTIFY_EMAIL. Response: $response" >> "$output_file"
+}
 function collect_counters()
 {
     # $1-label, $2-output_file, $3-instance, $4-pid
@@ -148,6 +176,7 @@ function zip_and_upload() {
     azcopy_output=$(/tools/azcopy copy "$zip_file" "$sas_url" 2>&1)
     if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Zip file successfully uploaded to Azure Blob Container." | tee -a "$output_file"
+        sendemail "Successfully got dump for ${SITE_NAME}" "$output_file"
         return 0
     fi
 
@@ -160,6 +189,7 @@ function zip_and_upload() {
         azcopy_output=$(/tools/azcopy copy "$zip_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Zip file successfully uploaded to Azure Blob Container." | tee -a "$output_file"
+            sendemail "Successfully got dump for ${SITE_NAME}" "$output_file"
             return 0
         fi
         ((retry_count++))
@@ -182,6 +212,7 @@ while [[ "$#" -gt 0 ]]; do
         -t2) THRESHOLD2="$2"; shift 2 ;;
         -t3) THRESHOLD3="$2"; shift 2 ;;
         -c)  CLEAN_FLAG=1; shift ;;
+        -e)  NOTIFY_EMAIL="$2"; shift 2 ;;
         -h)  usage; exit 0 ;;
         *)   echo "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -224,9 +255,14 @@ if [[ -z "$INSTANCE" ]]; then
     INSTANCE=$(hostname)
 fi
 
+# ─── Get site name
+SITE_NAME=$(getwebsitename "$PID")
+
 # ─── Setup output directory ───────────────────────────────────────────────────
 WORK_DIR="gcdump-logs-${INSTANCE}"
 mkdir -p "$WORK_DIR"
+
+NOTIFY_EMAIL=""
 
 # Arrays to track collected files
 COLLECTED_REPORTS=()
