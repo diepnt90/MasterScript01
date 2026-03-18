@@ -66,6 +66,8 @@ function collect_counters()
         --format csv \
         --duration 00:00:10 > /dev/null 2>&1
     echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] dotnet-counters collection done." | tee -a "$output_file"
+    # Return path so caller can track it
+    echo "$counters_file"
 }
 
 function collect_gcdump() {
@@ -79,7 +81,9 @@ function collect_gcdump() {
     local gcdump_file="${WORK_DIR}/gcdump_${instance}_${label}_${timestamp}.gcdump"
     local report_file="${WORK_DIR}/report_${instance}_${label}_${timestamp}.txt"
 
-    collect_counters "$label" "$output_file" "$instance" "$pid"
+    local counters_file
+    counters_file=$(collect_counters "$label" "$output_file" "$instance" "$pid")
+    COLLECTED_COUNTERS+=("$counters_file")
     echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Collecting gcdump -> $(basename $gcdump_file) ..." | tee -a "$output_file"
 
     if [[ ! -x "/tools/dotnet-gcdump" ]]; then
@@ -87,11 +91,12 @@ function collect_gcdump() {
         return 1
     fi
 
-    /tools/dotnet-gcdump collect -p "$pid" -o "$gcdump_file" > /dev/null 2>&1
+    local gcdump_output
+    gcdump_output=$(/tools/dotnet-gcdump collect -p "$pid" -o "$gcdump_file" 2>&1)
     local exit_code=$?
 
     if [[ $exit_code -ne 0 ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] ERROR: dotnet-gcdump exited with code $exit_code" | tee -a "$output_file"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] ERROR: dotnet-gcdump exited with code $exit_code. Details: $gcdump_output" | tee -a "$output_file"
         return 1
     fi
 
