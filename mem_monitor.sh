@@ -48,6 +48,35 @@ function getcomputername() {
     echo "$instance"
 }
 
+
+function getwebsitename() {
+    local pid=$1
+    local site
+    site=$(cat "/proc/$pid/environ" | tr '\0' '\n' | grep -w WEBSITE_SITE_NAME)
+    site=${site#*=}
+    echo "${site:0:6}"
+}
+
+function sendemail() {
+    # $1-subject, $2-body, $3-output_file
+    local subject=$1
+    local body=$2
+    local output_file=$3
+    if [[ -z "$NOTIFY_EMAIL" ]]; then
+        return 0
+    fi
+    local response
+    response=$(curl -s -X POST https://api.smtp2go.com/v3/email/send \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"api_key\": \"api-3A3D49C1F24C4BB086727C18615A0353\",
+            \"to\": [\"$NOTIFY_EMAIL\"],
+            \"sender\": \"IMtool@daulac.my\",
+            \"subject\": \"$subject\",
+            \"text_body\": \"$body\"
+        }" 2>&1)
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Email notification sent to $NOTIFY_EMAIL. Response: $response" >> "$output_file"
+}
 function collect_counters()
 {
     # $1-label, $2-output_file, $3-instance, $4-pid
@@ -131,6 +160,7 @@ function collectdump() {
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Memory dump successfully uploaded to Azure Blob Container." >> "$output_file"
+            sendemail "Successfully got dump for ${SITE_NAME} - ${INSTANCE}" "File ${dump_file} has been uploaded to Azure Blob Container." "$output_file"
             return 0
         fi
 
@@ -143,6 +173,7 @@ function collectdump() {
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): [${label}] Memory dump successfully uploaded to Azure Blob Container." >> "$output_file"
+                sendemail "Successfully got dump for ${SITE_NAME} - ${INSTANCE}" "File ${dump_file} has been uploaded to Azure Blob Container." "$output_file"
                 return 0
             fi
             ((retry_count++))
@@ -157,12 +188,14 @@ THRESHOLD1=""
 THRESHOLD2=""
 CLEAN_FLAG=0
 INTERVAL=300  # 5 minutes
+NOTIFY_EMAIL=""
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         -t1) THRESHOLD1="$2"; shift 2 ;;
         -t2) THRESHOLD2="$2"; shift 2 ;;
         -c)  CLEAN_FLAG=1; shift ;;
+        -e)  NOTIFY_EMAIL="$2"; shift 2 ;;
         -h)  usage; exit 0 ;;
         *)   echo "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -203,6 +236,9 @@ if [[ -z "$INSTANCE" ]]; then
     echo "[WARNING] Cannot find COMPUTERNAME environment variable, using hostname instead."
     INSTANCE=$(hostname)
 fi
+
+# ─── Get site name
+SITE_NAME=$(getwebsitename "$PID")
 
 # ─── Setup output directory & log file ───────────────────────────────────────
 OUTPUT_DIR="memusage-logs-${INSTANCE}"
@@ -259,7 +295,7 @@ while true; do
     # Check threshold 1 (only if not already done)
     elif [[ "$DUMP1_DONE" == false && "$USED_PCT" -gt "$THRESHOLD1" ]]; then
         echo "[${TIMESTAMP}] [ALERT] Memory exceeded threshold 1 (${THRESHOLD1}%). Collecting dump #1..." | tee -a "$OUTPUT_FILE"
-        collectdump "threshold1_${THRESHOLD1}pct" "$OUTPUT_FILE" "$INSTANCE" "$PID" &
+        collectdump "threshold1_${THRESHOLD1}pct" "$OUTPUT_FILE" "$INSTANCE" "$PID"
         DUMP1_DONE=true
     fi
 
