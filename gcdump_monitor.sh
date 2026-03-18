@@ -205,6 +205,7 @@ THRESHOLD2=""
 THRESHOLD3=""
 CLEAN_FLAG=0
 INTERVAL=300  # 5 minutes
+NOTIFY_EMAIL=""
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -261,8 +262,6 @@ SITE_NAME=$(getwebsitename "$PID")
 # ─── Setup output directory ───────────────────────────────────────────────────
 WORK_DIR="gcdump-logs-${INSTANCE}"
 mkdir -p "$WORK_DIR"
-
-NOTIFY_EMAIL=""
 
 # Arrays to track collected files
 COLLECTED_REPORTS=()
