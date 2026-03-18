@@ -167,6 +167,11 @@ if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "
     esac
 fi
 
+# ─── Ask for notification email if not provided
+if [ -z "$NOTIFY_EMAIL" ]; then
+    read -p "Enter email for notification (leave blank to skip): " NOTIFY_EMAIL
+fi
+
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/netcore_threadcount_monitoring.sh"
 RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/resp_monitoring.sh"
