@@ -3,9 +3,9 @@
 # Combined Diagnostics Script for Thread Count, Response Time, Outbound Connections,
 # Memory Usage and GCDump monitoring.
 # Allows user to select which diagnostics to run and provides additional input as needed.
-# Author: Diep Nguyen
-# Created: 15 Mar 2026
-# Updated: 15 Mar 2026
+# Author: Mainul Hossain and Anh Tuan Hoang
+# Created: 10 July 2024
+# Updated: January 21, 2025
 
 # Get the script's name
 master_script_name=${0##*/}
@@ -27,7 +27,8 @@ function usage() {
     echo "  -t1 <percent>   :  First threshold in %  (required for memoryusage and gcdump)"
     echo "  -t2 <percent>   :  Second threshold in % (required for memoryusage and gcdump)"
     echo "  -t3 <percent>   :  Third threshold in %  (required for gcdump only)"
-    echo "  -l <URL>        :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
+    echo "  -l <URL>        :  Specify URL to monitor (default: http://localhost:80 for responsetime only)
+  -e <email>      :  Email address to notify when dump/trace/gcdump is collected (optional)"
     echo "  -c              :  Shutting down the script and all relevant processes"
     echo "  -h              :  Display this help message"
     echo "Optional arguments for threadcount, responsetime, outboundconnection:"
@@ -37,12 +38,15 @@ function usage() {
     exit 0
 }
 
+NOTIFY_EMAIL=""
+
 # Parse arguments
-while getopts ":d:t:l:ch" opt; do
+while getopts ":d:t:l:e:ch" opt; do
     case $opt in
         d) DIAGNOSTIC=$OPTARG ;;
         t) THRESHOLD=$OPTARG ;;
         l) URL=$OPTARG ;;
+        e) NOTIFY_EMAIL=$OPTARG ;;
         c) CLEANUP=true ;;
         h) usage ;;
         \?) echo "Invalid option -$OPTARG" >&2; usage ;;
@@ -216,6 +220,7 @@ cmd_args=()
 case $DIAGNOSTIC in
     threadcount)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -223,9 +228,8 @@ case $DIAGNOSTIC in
         ;;
     responsetime)
         cmd_args+=("-t" "$THRESHOLD")
-        if [ -n "$URL" ]; then
-            cmd_args+=("-l" "$URL")
-        fi
+        if [ -n "$URL" ]; then cmd_args+=("-l" "$URL"); fi
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -233,6 +237,7 @@ case $DIAGNOSTIC in
         ;;
     outboundconnection)
         cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then
             cmd_args+=("$DIAG_OPTION")
         fi
@@ -240,10 +245,12 @@ case $DIAGNOSTIC in
         ;;
     memoryusage)
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2")
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "memoryusage" $MEM_MONITOR_SCRIPT_URL
         ;;
     gcdump)
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2" "-t3" "$MEM_THRESHOLD3")
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "gcdump" $GCDUMP_MONITOR_SCRIPT_URL
         ;;
     *)
