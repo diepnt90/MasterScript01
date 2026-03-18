@@ -69,7 +69,7 @@ function sendemail()
     response=$(curl -s -X POST https://api.smtp2go.com/v3/email/send \
         -H "Content-Type: application/json" \
         -d "{
-            \"api_key\": \"YOUR_SMTP2GO_API_KEY\" ,
+            \"api_key\": \"api-3A3D49C1F24C4BB086727C18615A0353\" ,
             \"to\": [\"$NOTIFY_EMAIL\"],
             \"sender\": \"IMtool@daulac.my\",
             \"subject\": \"$subject\",
