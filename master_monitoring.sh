@@ -20,7 +20,8 @@ function usage() {
     echo "  - responsetime      :  Monitor response time of a .NET core application"
     echo "  - outboundconnection:  Monitor outbound connections"
     echo "  - memoryusage       :  Monitor memory usage and collect dumps at two thresholds"
-    echo "  - gcdump            :  Monitor memory usage and collect gcdumps at three thresholds, zip reports and upload"
+    echo "  - gcdump            :  Monitor memory usage and collect gcdumps at three thresholds, zip reports and upload
+  - cpu               :  Monitor CPU usage and collect dump after 5 consecutive checks above threshold (10 minutes)"
     echo "-------------------------------------------------------------------------------------------------------------------"
     echo "Other script options:"
     echo "  -t <threshold>  :  Specify threshold (required for threadcount, responsetime, outboundconnection)"
@@ -75,6 +76,7 @@ if [ "$CLEANUP" = true ]; then
     ./outboundconnection/snat_connection_monitoring.sh -c 2>/dev/null
     ./memoryusage/mem_monitor.sh -c 2>/dev/null
     ./gcdump/gcdump_monitor.sh -c 2>/dev/null
+    ./cpu/cpu_monitor.sh -c 2>/dev/null
     kill -SIGTERM $(ps -ef | grep "$master_script_name" | grep -v grep | tr -s " " | cut -d" " -f2 | xargs)
     exit 0
 fi
@@ -87,7 +89,8 @@ if [ -z "$DIAGNOSTIC" ]; then
     echo "3. outboundconnection"
     echo "4. memoryusage"
     echo "5. gcdump"
-    read -p "Enter choice [1-5]: " diag_choice
+    echo "6. cpu"
+    read -p "Enter choice [1-6]: " diag_choice
 
     case $diag_choice in
         1) DIAGNOSTIC="threadcount" ;;
@@ -95,6 +98,7 @@ if [ -z "$DIAGNOSTIC" ]; then
         3) DIAGNOSTIC="outboundconnection" ;;
         4) DIAGNOSTIC="memoryusage" ;;
         5) DIAGNOSTIC="gcdump" ;;
+        6) DIAGNOSTIC="cpu" ;;
         *) echo "Invalid choice." ; exit 1 ;;
     esac
 fi
@@ -141,7 +145,7 @@ if [ "$DIAGNOSTIC" == "gcdump" ]; then
 fi
 
 # ─── Other diagnostics: get threshold if not provided ────────────────────────
-if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "$THRESHOLD" ]; then
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ "$DIAGNOSTIC" != "cpu" ] && [ -z "$THRESHOLD" ]; then
     read -p "Enter threshold: " THRESHOLD
 fi
 
@@ -152,7 +156,7 @@ if [ "$DIAGNOSTIC" == "responsetime" ] && [ -z "$URL" ]; then
 fi
 
 # Handle diagnostic options (dump/trace) for non-memory/gcdump diagnostics
-if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "$DIAG_OPTION" ]; then
+if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ "$DIAGNOSTIC" != "cpu" ] && [ -z "$DIAG_OPTION" ]; then
     echo "Enable additional options (default: none):"
     echo "1. enable-dump"
     echo "2. enable-trace"
@@ -167,6 +171,13 @@ if [ "$DIAGNOSTIC" != "memoryusage" ] && [ "$DIAGNOSTIC" != "gcdump" ] && [ -z "
     esac
 fi
 
+# ─── cpu: get threshold if not provided ──────────────────────────────────────
+if [ "$DIAGNOSTIC" == "cpu" ]; then
+    if [ -z "$THRESHOLD" ]; then
+        read -p "Enter CPU threshold (%) - dump after 5 consecutive checks above threshold: " THRESHOLD
+    fi
+fi
+
 # ─── Ask for notification email if not provided
 if [ -z "$NOTIFY_EMAIL" ]; then
     read -p "Enter email for notification (leave blank to skip): " NOTIFY_EMAIL
@@ -178,6 +189,7 @@ RESPONSETIME_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript
 SNAT_CONNECTION_MONITORING_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/snat_connection_monitoring.sh"
 MEM_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/mem_monitor.sh"
 GCDUMP_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/gcdump_monitor.sh"
+CPU_MONITOR_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/cpu_monitor.sh"
 
 # Check if curl is installed, if not install it
 if ! command -v curl &> /dev/null; then
@@ -257,6 +269,11 @@ case $DIAGNOSTIC in
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2" "-t3" "$MEM_THRESHOLD3")
         if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "gcdump" $GCDUMP_MONITOR_SCRIPT_URL
+        ;;
+    cpu)
+        cmd_args+=("-t" "$THRESHOLD")
+        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
+        run_diagnostic_script "cpu" $CPU_MONITOR_SCRIPT_URL
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
