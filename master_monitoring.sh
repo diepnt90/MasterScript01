@@ -265,7 +265,14 @@ case $DIAGNOSTIC in
         run_diagnostic_script "cpuusage" $CPU_MONITOR_SCRIPT_URL
         ;;
     tcp)
-        run_diagnostic_script "tcp" $TCP_SCRIPT_URL
+        mkdir -p ./tcp
+        cd ./tcp
+        if [ ! -f tcp.sh ]; then
+            echo "Downloading tcp.sh..."
+            curl -L -o tcp.sh $TCP_SCRIPT_URL &> /dev/null
+            chmod +x tcp.sh
+        fi
+        ./tcp.sh
         ;;
     *)
         echo "Invalid diagnostic type: $DIAGNOSTIC"
