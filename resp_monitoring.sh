@@ -270,14 +270,24 @@ while true; do
     fi
 
     if [[ $is_external -eq 0 ]]; then
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds "$location")
-    elif [[ "$location" == "http://localhost"* ]]; then
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds "$location" --resolve "$host_and_port":127.0.0.1)
-    elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds -H "Host:$host_and_port" "http://localhost")
-    else
-        read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds -H "Host:$host_and_port" "http://localhost")
-    fi
+    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
+        -H "X-Forwarded-Proto: https" \
+        "$location")
+elif [[ "$location" == "http://localhost"* ]]; then
+    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
+        -H "X-Forwarded-Proto: https" \
+        "$location" --resolve "$host_and_port":127.0.0.1)
+elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
+    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
+        -H "Host:$host_and_port" \
+        -H "X-Forwarded-Proto: https" \
+        "http://localhost")
+else
+    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
+        -H "Host:$host_and_port" \
+        -H "X-Forwarded-Proto: https" \
+        "http://localhost")
+fi
 
     curl_code=$?
     if [[ $curl_code -eq 28 ]]; then
