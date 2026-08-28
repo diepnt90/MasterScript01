@@ -237,8 +237,26 @@ case $DIAGNOSTIC in
         run_diagnostic_script "threadcount" $THREADCOUNT_SCRIPT_URL
         ;;
     responsetime)
+        # Normalize URL so resp_monitoring.sh always receives HTTP.
+        # Accepted examples:
+        #   www.hoyavision.com         -> http://www.hoyavision.com
+        #   http://www.hoyavision.com  -> http://www.hoyavision.com
+        #   https://www.hoyavision.com -> http://www.hoyavision.com
+        # Paths and explicit ports are preserved.
+        if [ -z "$URL" ]; then
+            URL="http://localhost:80"
+        else
+            case "$URL" in
+                https://*) URL="http://${URL#https://}" ;;
+                http://*)  ;;
+                *)         URL="http://$URL" ;;
+            esac
+        fi
+
+        echo "Normalized response-time URL: $URL"
+
         cmd_args+=("-t" "$THRESHOLD")
-        if [ -n "$URL" ]; then cmd_args+=("-l" "$URL"); fi
+        cmd_args+=("-l" "$URL")
         if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then cmd_args+=("$DIAG_OPTION"); fi
         run_diagnostic_script "responsetime" $RESPONSETIME_SCRIPT_URL
