@@ -215,7 +215,11 @@ if ! command -v bc &> /dev/null; then
     apt-get update && apt-get install -y bc
 fi
 
-is_external=$(is_external_url "$location")
+if is_external_url "$location"; then
+    is_external=1
+else
+    is_external=0
+fi
 
 if [[ $is_external -eq 1 ]] || [[ "$enable_dump" == true ]] || [[ "$enable_trace" == true ]]; then
     pid=$(/tools/dotnet-dump ps | grep /usr/share/dotnet/dotnet | grep -v grep | tr -s " " | cut -d" " -f2)
@@ -252,15 +256,32 @@ dump_lock_file="dump_taken_${instance}.lock"
 trace_lock_file="trace_taken_${instance}.lock"
 
 timeout_seconds=$(( (threshold + 5000) / 1000 ))
+
+# Parse hostname, optional port and path from the monitoring URL.
+# Monitoring is always sent to the local HTTP endpoint. The original hostname
+# is preserved so curl sends the correct Host header, while --resolve forces
+# the TCP connection to 127.0.0.1. X-Forwarded-Proto remains https so the
+# application/proxy can treat the original client scheme as HTTPS.
 url="${location#*://}"
 host_and_port="${url%%/*}"
+host="${host_and_port%%:*}"
+
+if [[ "$host_and_port" == *:* ]]; then
+    port="${host_and_port##*:}"
+else
+    port=80
+fi
+
+# Preserve any path/query from the supplied URL but force the request scheme to HTTP.
+if [[ "$url" == */* ]]; then
+    path_and_query="/${url#*/}"
+else
+    path_and_query=""
+fi
+request_url="http://${host}:${port}${path_and_query}"
 
 echo "###Info: Starting monitoring of $location with threshold ${threshold}ms every ${frequency}s"
-if [[ $is_external -eq 0 ]]; then
-    echo "###Info: External URL detected - monitoring via internet"
-else
-    echo "###Info: Local URL detected - monitoring via localhost"
-fi
+echo "###Info: Sending HTTP request to ${host}:${port} via 127.0.0.1 with X-Forwarded-Proto: https"
 
 while true; do
     current_hour=$(date +"%Y-%m-%d_%H")
@@ -269,25 +290,12 @@ while true; do
         previous_hour="$current_hour"
     fi
 
-    if [[ $is_external -eq 0 ]]; then
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
+    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null \
+        -w "%{time_total} %{http_code}" \
+        -m "$timeout_seconds" \
+        --resolve "${host}:${port}:127.0.0.1" \
         -H "X-Forwarded-Proto: https" \
-        "$location")
-elif [[ "$location" == "http://localhost"* ]]; then
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
-        -H "X-Forwarded-Proto: https" \
-        "$location" --resolve "$host_and_port":127.0.0.1)
-elif [[ "$host_and_port" == "www.unlimitedvacationclub.com"* ]]; then
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
-        -H "Host:$host_and_port" \
-        -H "X-Forwarded-Proto: https" \
-        "http://localhost")
-else
-    read -r respTimeInSeconds httpCode <<< $(curl -so /dev/null -w "%{time_total} %{http_code}" -m $timeout_seconds \
-        -H "Host:$host_and_port" \
-        -H "X-Forwarded-Proto: https" \
-        "http://localhost")
-fi
+        "$request_url")
 
     curl_code=$?
     if [[ $curl_code -eq 28 ]]; then
