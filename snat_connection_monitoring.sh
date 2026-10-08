@@ -12,10 +12,9 @@ script_name=${0##*/}
 
 function usage()
 {
-    echo "###Syntax: $script_name -t <threshold> -f <interval> [-e <email>]"
+    echo "###Syntax: $script_name -t <threshold> -f <interval> "
     echo "-t <threshold> tells the threshold of outbound connections to collect dump/trace, if not given then will be defaulted to 100"
     echo "-f <interval> tells how frequent (in second) to poll the connections, if not given, then will poll every 10s"
-    echo "-e <email> email address to notify when dump/trace is collected (optional)"
     echo "Additional arguments:"
     echo "  enable-dump        Enable memory dump collection when threshold is exceeded"
     echo "  enable-trace       Enable profiler trace collection when threshold is exceeded"
@@ -67,27 +66,6 @@ function getwebsitename()
     echo "${site:0:6}"
 }
 
-function sendemail()
-{
-    # $1-subject, $2-body, $3-output_file
-    local subject=$1
-    local body=$2
-    local output_file=$3
-    if [[ -z "$NOTIFY_EMAIL" ]]; then
-        return 0
-    fi
-    local response
-    response=$(curl -s -X POST https://api.smtp2go.com/v3/email/send \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"api_key\": \"api-3A3D49C1F24C4BB086727C18615A0353\" ,
-            \"to\": [\"$NOTIFY_EMAIL\"],
-            \"sender\": \"IMtool@daulac.my\",
-            \"subject\": \"$subject\",
-            \"text_body\": \"$body\"
-        }" 2>&1)
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Email notification sent to $NOTIFY_EMAIL. Response: $response" >> "$output_file"
-}
 
 function collectdump()
 {
@@ -104,7 +82,6 @@ function collectdump()
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
-            sendemail "Successfully got dump for ${SITE_NAME} - ${3}" "File ${dump_file} has been uploaded to Azure Blob Container." "$1"
             return 0
         fi
 
@@ -116,7 +93,6 @@ function collectdump()
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump has been successfully uploaded to Azure Blob Container." >> "$1"
-                sendemail "Successfully got dump for ${SITE_NAME} - ${3}" "File ${dump_file} has been uploaded to Azure Blob Container." "$1"
                 return 0
             fi
             ((retry_count++))
@@ -140,7 +116,6 @@ function collecttrace()
         azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
-            sendemail "Successfully got dump for ${SITE_NAME} - ${3}" "File ${trace_file} has been uploaded to Azure Blob Container." "$1"
             return 0
         fi
 
@@ -152,7 +127,6 @@ function collecttrace()
             azcopy_output=$(/tools/azcopy copy "$trace_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Profiler trace has been successfully uploaded to Azure Blob Container." >> "$1"
-                sendemail "Successfully got dump for ${SITE_NAME} - ${3}" "File ${trace_file} has been uploaded to Azure Blob Container." "$1"
                 return 0
             fi
             ((retry_count++))
@@ -206,13 +180,11 @@ function monitor_connections() {
     return $?
 }
 
-NOTIFY_EMAIL=""
 
-while getopts ":t:f:e:hc" opt; do
+while getopts ":t:f:hc" opt; do
     case $opt in
         t) threshold=$OPTARG ;;
         f) frequency=$OPTARG ;;
-        e) NOTIFY_EMAIL=$OPTARG ;;
         h) usage; exit 0 ;;
         c) clean_flag=1 ;;
         *) die "Invalid option: -$OPTARG" 1 >&2 ;;
