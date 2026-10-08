@@ -30,7 +30,6 @@ function usage() {
     echo "  -t2 <percent>   :  Second threshold in % (required for memoryusage and gcdump)"
     echo "  -t3 <percent>   :  Third threshold in %  (required for gcdump only)"
     echo "  -l <URL>        :  Specify URL to monitor (default: http://localhost:80 for responsetime only)"
-    echo "  -e <email>      :  Email address to notify when dump/trace/gcdump is collected (optional)"
     echo "  -c              :  Shutting down the script and all relevant processes"
     echo "  -h              :  Display this help message"
     echo "Optional arguments for threadcount, responsetime, outboundconnection:"
@@ -40,15 +39,13 @@ function usage() {
     exit 0
 }
 
-NOTIFY_EMAIL=""
 
 # Parse arguments
-while getopts ":d:t:l:e:ch" opt; do
+while getopts ":d:t:l:ch" opt; do
     case $opt in
         d) DIAGNOSTIC=$OPTARG ;;
         t) THRESHOLD=$OPTARG ;;
         l) URL=$OPTARG ;;
-        e) NOTIFY_EMAIL=$OPTARG ;;
         c) CLEANUP=true ;;
         h) usage ;;
         \?) echo "Invalid option -$OPTARG" >&2; usage ;;
@@ -175,10 +172,6 @@ if [ "$DIAGNOSTIC" == "cpuusage" ]; then
     fi
 fi
 
-# Ask for notification email (skip for tcp)
-if [ -z "$NOTIFY_EMAIL" ] && [ "$DIAGNOSTIC" != "tcp" ]; then
-    read -p "Enter email for notification (leave blank to skip): " NOTIFY_EMAIL
-fi
 
 # Define URLs for the diagnostic scripts
 THREADCOUNT_SCRIPT_URL="https://raw.githubusercontent.com/diepnt90/MasterScript01/refs/heads/main/netcore_threadcount_monitoring.sh"
@@ -232,7 +225,6 @@ cmd_args=()
 case $DIAGNOSTIC in
     threadcount)
         cmd_args+=("-t" "$THRESHOLD")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then cmd_args+=("$DIAG_OPTION"); fi
         run_diagnostic_script "threadcount" $THREADCOUNT_SCRIPT_URL
         ;;
@@ -257,29 +249,24 @@ case $DIAGNOSTIC in
 
         cmd_args+=("-t" "$THRESHOLD")
         cmd_args+=("-l" "$URL")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then cmd_args+=("$DIAG_OPTION"); fi
         run_diagnostic_script "responsetime" $RESPONSETIME_SCRIPT_URL
         ;;
     outboundconnection)
         cmd_args+=("-t" "$THRESHOLD")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         if [ -n "$DIAG_OPTION" ]; then cmd_args+=("$DIAG_OPTION"); fi
         run_diagnostic_script "outboundconnection" $SNAT_CONNECTION_MONITORING_SCRIPT_URL
         ;;
     memoryusage)
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "memoryusage" $MEM_MONITOR_SCRIPT_URL
         ;;
     gcdump)
         cmd_args+=("-t1" "$MEM_THRESHOLD1" "-t2" "$MEM_THRESHOLD2" "-t3" "$MEM_THRESHOLD3")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "gcdump" $GCDUMP_MONITOR_SCRIPT_URL
         ;;
     cpuusage)
         cmd_args+=("-t" "$THRESHOLD")
-        if [ -n "$NOTIFY_EMAIL" ]; then cmd_args+=("-e" "$NOTIFY_EMAIL"); fi
         run_diagnostic_script "cpuusage" $CPU_MONITOR_SCRIPT_URL
         ;;
     tcp)
