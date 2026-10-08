@@ -3,17 +3,15 @@
 # CPU Monitor Script
 # Monitor CPU usage every 2 minutes. If CPU exceeds threshold
 # for 5 consecutive checks (10 minutes), collect memory dump.
-# Usage: ./cpu_monitor.sh -t <threshold_percent> [-e <email>]
+# Usage: ./cpu_monitor.sh -t <threshold_percent> 
 # ============================================================
 
 script_name=${0##*/}
 
 function usage() {
-    echo "Syntax: $script_name -t <threshold_percent> [-e <email>]"
+    echo "Syntax: $script_name -t <threshold_percent> "
     echo "  -t <percent>  : CPU threshold % to trigger dump after 5 consecutive checks (10 minutes)"
-    echo "  -e <email>    : Email address to notify when dump is collected (optional)"
     echo "  -c            : Cleanup/shutdown the script"
-    echo "Example: $script_name -t 80 -e your@email.com"
 }
 
 function die() {
@@ -68,26 +66,6 @@ function get_cpu_pct() {
     echo $(( (diff_total - diff_idle) * 100 / diff_total ))
 }
 
-function sendemail() {
-    # $1-subject, $2-body, $3-output_file
-    local subject=$1
-    local body=$2
-    local output_file=$3
-    if [[ -z "$NOTIFY_EMAIL" ]]; then
-        return 0
-    fi
-    local response
-    response=$(curl -s -X POST https://api.smtp2go.com/v3/email/send \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"api_key\": \"api-3A3D49C1F24C4BB086727C18615A0353\",
-            \"to\": [\"$NOTIFY_EMAIL\"],
-            \"sender\": \"IMtool@daulac.my\",
-            \"subject\": \"$subject\",
-            \"text_body\": \"$body\"
-        }" 2>&1)
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Email notification sent to $NOTIFY_EMAIL. Response: $response" >> "$output_file"
-}
 
 function collectdump() {
     # $1-output_file, $2-instance, $3-pid
@@ -120,7 +98,6 @@ function collectdump() {
         azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
         if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump successfully uploaded to Azure Blob Container." >> "$output_file"
-            sendemail "Successfully got dump for ${SITE_NAME} - ${instance}" "File ${dump_file} has been uploaded to Azure Blob Container." "$output_file"
             return 0
         fi
 
@@ -132,7 +109,6 @@ function collectdump() {
             azcopy_output=$(/tools/azcopy copy "$dump_file" "$sas_url" 2>&1)
             if echo "$azcopy_output" | grep -q "Final Job Status: Completed"; then
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Memory dump successfully uploaded to Azure Blob Container." >> "$output_file"
-                sendemail "Successfully got dump for ${SITE_NAME} - ${instance}" "File ${dump_file} has been uploaded to Azure Blob Container." "$output_file"
                 return 0
             fi
             ((retry_count++))
@@ -144,14 +120,12 @@ function collectdump() {
 # ─── Parse arguments ──────────────────────────────────────────────────────────
 THRESHOLD=""
 CLEAN_FLAG=0
-NOTIFY_EMAIL=""
 INTERVAL=120   # 2 minutes
 CONSECUTIVE_REQUIRED=5  # 5 x 2min = 10 minutes
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         -t)  THRESHOLD="$2"; shift 2 ;;
-        -e)  NOTIFY_EMAIL="$2"; shift 2 ;;
         -c)  CLEAN_FLAG=1; shift ;;
         -h)  usage; exit 0 ;;
         *)   echo "Unknown option: $1"; usage; exit 1 ;;
